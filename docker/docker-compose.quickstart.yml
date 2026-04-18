@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${PAPERCLIP_PORT:-3100}:3100"
+      - "${MEETERYAPP_PORT:-3000}:3000"
+    env_file:
+      - .env
     environment:
       HOST: "0.0.0.0"
       PAPERCLIP_HOME: "/paperclip"

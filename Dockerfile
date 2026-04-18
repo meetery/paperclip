@@ -53,6 +53,11 @@ RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/cod
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
+RUN curl https://cursor.com/install -fsS | bash \
+  && chmod a+rx /root /root/.local /root/.local/bin /root/.local/share \
+  && chmod -R a+rX /root/.local/share/cursor-agent \
+  && ln -sf /root/.local/bin/agent /usr/local/bin/agent \
+  && ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
