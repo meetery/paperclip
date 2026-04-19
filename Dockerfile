@@ -61,6 +61,17 @@ RUN curl https://cursor.com/install -fsS | bash \
   && ln -sf /root/.local/bin/agent /usr/local/bin/agent \
   && ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent
 
+RUN npm install --global bun@latest
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN mkdir -p /opt/ms-playwright \
+  && npx --yes playwright@1.49.0 install --with-deps chromium \
+  && chmod -R a+rX /opt/ms-playwright
+
+RUN curl -fsSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz \
+    | tar -xz -C /usr/local/bin ngrok \
+  && chmod 0755 /usr/local/bin/ngrok
+
 COPY scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
@@ -76,7 +87,8 @@ ENV NODE_ENV=production \
   PAPERCLIP_CONFIG=/paperclip/instances/default/config.json \
   PAPERCLIP_DEPLOYMENT_MODE=authenticated \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
-  OPENCODE_ALLOW_ALL_MODELS=true
+  OPENCODE_ALLOW_ALL_MODELS=true \
+  PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
 VOLUME ["/paperclip"]
 EXPOSE 3100

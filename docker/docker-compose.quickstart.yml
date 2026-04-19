@@ -3,8 +3,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    depends_on:
-      - browser
     ports:
       - "${PAPERCLIP_PORT:-3100}:3100"
       - "${MEETERYAPP_PORT:-3000}:3000"
@@ -15,16 +13,10 @@ services:
       PAPERCLIP_HOME: "/paperclip"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
     volumes:
       - "${PAPERCLIP_DATA_DIR:-../data/docker-paperclip}:/paperclip"
-
-  browser:
-    image: mcr.microsoft.com/playwright:v1.49.0-noble
-    command: >
-      /bin/sh -lc "npx -y @playwright/mcp@latest install-browser chrome-for-testing && npx -y @playwright/mcp@latest --headless --browser chromium --host 0.0.0.0 --port 8931 --allowed-hosts browser,browser:8931,localhost,localhost:8931,127.0.0.1,127.0.0.1:8931 --no-sandbox"
-    shm_size: "2gb"
-    restart: unless-stopped
