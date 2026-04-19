@@ -80,7 +80,8 @@ RUN apt-get update \
   && npx --yes playwright@1.49.0 install chromium \
   && chmod -R a+rX /opt/ms-playwright
 
-RUN curl -fsSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz \
+RUN arch="$(dpkg --print-architecture)" \
+  && curl -fsSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-${arch}.tgz" \
     | tar -xz -C /usr/local/bin ngrok \
   && chmod 0755 /usr/local/bin/ngrok
 
