@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1.20
+ARG NODE_IMAGE=node:lts-trixie-slim
+FROM ${NODE_IMAGE}
+
+WORKDIR /repro
+
+ARG PLAYWRIGHT_VERSION=1.58.2
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
+RUN node --version && npm --version
+RUN npm init -y \
+  && npm install --save-dev "@playwright/test@${PLAYWRIGHT_VERSION}"
+
+RUN <<'EOF'
+set -eux
+
+npx playwright --version
+npx playwright install --dry-run --only-shell chromium
+
+(
+  while true; do
+    echo "repro heartbeat $(date -Is)"
+    du -sh /opt/ms-playwright /tmp 2>/dev/null || true
+    ps -eo pid,ppid,stat,etime,pcpu,pmem,args \
+      | grep -E 'playwright|node|zip|tar|chromium' \
+      | grep -v grep || true
+    sleep 15
+  done
+) &
+heartbeat_pid=$!
+
+set +e
+timeout --foreground 5m npx playwright install --only-shell chromium
+status=$?
+set -e
+
+kill "$heartbeat_pid" 2>/dev/null || true
+wait "$heartbeat_pid" 2>/dev/null || true
+
+if [ "$status" -ne 0 ]; then
+  echo "playwright install exited with status ${status}"
+  find /opt/ms-playwright /tmp -maxdepth 3 -mindepth 1 -print 2>/dev/null || true
+  exit "$status"
+fi
+
+npx playwright install --list
+find /opt/ms-playwright -maxdepth 2 -mindepth 1 -type d -print
+EOF

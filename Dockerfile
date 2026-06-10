@@ -78,18 +78,37 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 # Install chromium runtime libs explicitly with Debian trixie names; Playwright's
 # own --with-deps falls back to Ubuntu 20.04 package names on arm64 and breaks on
 # ttf-unifont / ttf-ubuntu-font-family which don't exist in Debian.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    libnss3 libnspr4 libdbus-1-3 \
-    libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 \
-    libcups2t64 libdrm2 libxkbcommon0 \
-    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libxcb1 libpango-1.0-0 libcairo2 libasound2t64 \
-    fonts-liberation fonts-unifont \
-  && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /opt/ms-playwright \
-  && npx --yes playwright@1.49.0 install chromium \
-  && chmod -R a+rX /opt/ms-playwright
+# Playwright documents --only-shell for headless-only CI/container use:
+# https://playwright.dev/docs/browsers#chromium-headless-shell
+RUN <<'EOF'
+set -eux
+
+apt-get update
+apt-get install -y --no-install-recommends \
+  libnss3 libnspr4 libdbus-1-3 \
+  libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 \
+  libcups2t64 libdrm2 libxkbcommon0 \
+  libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+  libgbm1 libxcb1 libpango-1.0-0 libcairo2 libasound2t64 \
+  fonts-liberation fonts-unifont
+rm -rf /var/lib/apt/lists/*
+mkdir -p /opt/ms-playwright
+
+echo "Playwright version:"
+pnpm exec playwright --version
+
+echo "Playwright chromium-headless-shell install dry run:"
+pnpm exec playwright install --dry-run --only-shell chromium
+
+echo "Installing Chromium headless shell into ${PLAYWRIGHT_BROWSERS_PATH}"
+PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000 DEBUG=pw:api,pw:browser \
+  timeout --foreground 20m pnpm exec playwright install --only-shell chromium
+
+echo "Installed Playwright browsers:"
+pnpm exec playwright install --list
+find /opt/ms-playwright -maxdepth 2 -mindepth 1 -type d -print
+chmod -R a+rX /opt/ms-playwright
+EOF
 
 RUN arch="$(dpkg --print-architecture)" \
   && curl -fsSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-${arch}.tgz" \
