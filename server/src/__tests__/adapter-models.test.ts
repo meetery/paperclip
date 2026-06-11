@@ -219,4 +219,73 @@ describe("adapter model listing", () => {
     expect(first.some((model) => model.id === "composer-1")).toBe(true);
   });
 
+  it("parses the current `agent models` id - label output format", async () => {
+    const runner = vi.fn(() => ({
+      status: 0,
+      stdout: [
+        "Available models",
+        "",
+        "auto - Auto",
+        "gpt-5.5-high - GPT-5.5 1M High",
+        "gpt-5.5-high-fast - GPT-5.5 High Fast",
+        "composer-2.5-fast - Composer 2.5 Fast (default)",
+        "claude-opus-4-8-thinking-high - Opus 4.8 1M Thinking",
+      ].join("\n"),
+      stderr: "",
+      hasError: false,
+    }));
+    setCursorModelsRunnerForTests(runner);
+
+    const models = await listAdapterModels("cursor");
+
+    expect(models.find((model) => model.id === "gpt-5.5-high")?.label).toBe("GPT-5.5 1M High");
+    expect(models.find((model) => model.id === "composer-2.5-fast")?.label).toBe(
+      "Composer 2.5 Fast (default)",
+    );
+    expect(models.some((model) => model.id === "claude-opus-4-8-thinking-high")).toBe(true);
+    // Header line must not leak in as a model id.
+    expect(models.some((model) => model.id.toLowerCase() === "available")).toBe(false);
+  });
+
+  it("supports async cursor model runners", async () => {
+    setCursorModelsRunnerForTests(async () => ({
+      status: 0,
+      stdout: "gpt-5.5-high - GPT-5.5 1M High",
+      stderr: "",
+      hasError: false,
+    }));
+
+    const models = await listAdapterModels("cursor");
+    expect(models.some((model) => model.id === "gpt-5.5-high")).toBe(true);
+  });
+
+  it("refreshes cached cursor models on demand", async () => {
+    const runner = vi.fn()
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "gpt-5.4-high - GPT-5.4 1M High",
+        stderr: "",
+        hasError: false,
+      })
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "gpt-5.5-high - GPT-5.5 1M High",
+        stderr: "",
+        hasError: false,
+      });
+    setCursorModelsRunnerForTests(runner);
+
+    const initial = await listAdapterModels("cursor");
+    const refreshed = await refreshAdapterModels("cursor");
+
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(initial.some((model) => model.id === "gpt-5.4-high")).toBe(true);
+    expect(refreshed.some((model) => model.id === "gpt-5.5-high")).toBe(true);
+  });
+
+  it("includes gpt-5.5 in the cursor fallback list", () => {
+    expect(cursorFallbackModels.some((model) => model.id === "gpt-5.5")).toBe(true);
+    expect(cursorFallbackModels.some((model) => model.id === "composer-2.5")).toBe(true);
+  });
+
 });

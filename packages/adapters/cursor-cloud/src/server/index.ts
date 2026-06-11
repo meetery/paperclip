@@ -1,6 +1,7 @@
 export { execute } from "./execute.js";
 export { testEnvironment } from "./test.js";
 export { sessionCodec } from "./session.js";
+export { listCursorCloudModels, resetCursorCloudModelsCacheForTests } from "./models.js";
 
 import type { AdapterConfigSchema } from "@paperclipai/adapter-utils";
 

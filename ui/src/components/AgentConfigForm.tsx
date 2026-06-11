@@ -115,7 +115,13 @@ const emptyOverlay: AgentConfigOverlay = {
 const EMPTY_ENV: Record<string, EnvBinding> = {};
 
 export function supportsAdapterModelRefresh(adapterType: string): boolean {
-  return adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "acpx_local";
+  return (
+    adapterType === "claude_local" ||
+    adapterType === "codex_local" ||
+    adapterType === "acpx_local" ||
+    adapterType === "cursor" ||
+    adapterType === "cursor_cloud"
+  );
 }
 
 function isOverlayDirty(o: AgentConfigOverlay): boolean {

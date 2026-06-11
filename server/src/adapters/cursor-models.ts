@@ -1,10 +1,11 @@
-import { spawnSync } from "node:child_process";
 import { models as cursorFallbackModels } from "@paperclipai/adapter-cursor-local";
+import { runChildProcess } from "@paperclipai/adapter-utils/server-utils";
 import type { AdapterModel } from "./types.js";
 
-const CURSOR_MODELS_TIMEOUT_MS = 5_000;
+// `agent models` can pay CLI cold-start overhead on first invocation, so give
+// discovery more headroom than a bare exec would need.
+const CURSOR_MODELS_TIMEOUT_MS = 15_000;
 const CURSOR_MODELS_CACHE_TTL_MS = 60_000;
-const MAX_BUFFER_BYTES = 512 * 1024;
 
 let cached: { expiresAt: number; models: AdapterModel[] } | null = null;
 
@@ -41,10 +42,11 @@ function isLikelyModelId(raw: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value);
 }
 
-function pushModelId(target: AdapterModel[], raw: string) {
+function pushModelId(target: AdapterModel[], raw: string, label?: string) {
   const id = sanitizeModelId(raw);
   if (!isLikelyModelId(id)) return;
-  target.push({ id, label: id });
+  const trimmedLabel = label?.trim() ?? "";
+  target.push({ id, label: trimmedLabel || id });
 }
 
 function collectFromJsonValue(value: unknown, target: AdapterModel[]) {
@@ -61,11 +63,15 @@ function collectFromJsonValue(value: unknown, target: AdapterModel[]) {
     }
     if (typeof item !== "object" || item === null) continue;
     const id = (item as { id?: unknown }).id;
-    if (typeof id === "string") {
-      pushModelId(target, id);
-    }
+    if (typeof id !== "string") continue;
+    const rawLabel = (item as { label?: unknown }).label;
+    pushModelId(target, id, typeof rawLabel === "string" ? rawLabel : undefined);
   }
 }
+
+// Matches the current `agent models` plain-text format:
+//   gpt-5.5-high - GPT-5.5 1M High
+const MODEL_ID_LABEL_LINE_RE = /^([A-Za-z0-9][A-Za-z0-9._/-]*)\s+-\s+(.+)$/;
 
 export function parseCursorModelsOutput(stdout: string, stderr: string): AdapterModel[] {
   const models: AdapterModel[] = [];
@@ -98,7 +104,13 @@ export function parseCursorModelsOutput(stdout: string, stderr: string): Adapter
     const line = lineRaw.trim();
     if (!line) continue;
     const bullet = line.replace(/^[-*]\s+/, "").trim();
-    if (!bullet || bullet.includes(" ")) continue;
+    if (!bullet) continue;
+    const idLabelMatch = bullet.match(MODEL_ID_LABEL_LINE_RE);
+    if (idLabelMatch) {
+      pushModelId(models, idLabelMatch[1] ?? "", idLabelMatch[2]);
+      continue;
+    }
+    if (bullet.includes(" ")) continue;
     pushModelId(models, bullet);
   }
 
@@ -109,42 +121,55 @@ function mergedWithFallback(models: AdapterModel[]): AdapterModel[] {
   return dedupeModels([...models, ...cursorFallbackModels]);
 }
 
-function defaultCursorModelsRunner(): CursorModelsCommandResult {
-  const result = spawnSync("agent", ["models"], {
-    encoding: "utf8",
-    timeout: CURSOR_MODELS_TIMEOUT_MS,
-    maxBuffer: MAX_BUFFER_BYTES,
-  });
-  return {
-    status: result.status,
-    stdout: typeof result.stdout === "string" ? result.stdout : "",
-    stderr: typeof result.stderr === "string" ? result.stderr : "",
-    hasError: Boolean(result.error),
-  };
+async function defaultCursorModelsRunner(): Promise<CursorModelsCommandResult> {
+  try {
+    const result = await runChildProcess(
+      `cursor-models-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      "agent",
+      ["models"],
+      {
+        cwd: process.cwd(),
+        env: {},
+        timeoutSec: CURSOR_MODELS_TIMEOUT_MS / 1000,
+        graceSec: 3,
+        onLog: async () => {},
+      },
+    );
+    return {
+      status: result.timedOut ? null : result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      hasError: result.timedOut,
+    };
+  } catch {
+    return { status: null, stdout: "", stderr: "", hasError: true };
+  }
 }
 
-let cursorModelsRunner: () => CursorModelsCommandResult = defaultCursorModelsRunner;
+let cursorModelsRunner: () => CursorModelsCommandResult | Promise<CursorModelsCommandResult> =
+  defaultCursorModelsRunner;
 
-function fetchCursorModelsFromCli(): AdapterModel[] {
-  const result = cursorModelsRunner();
+async function fetchCursorModelsFromCli(): Promise<AdapterModel[]> {
+  const result = await cursorModelsRunner();
   const { stdout, stderr } = result;
   if (result.hasError && stdout.trim().length === 0 && stderr.trim().length === 0) {
     return [];
   }
-  if ((result.status ?? 1) !== 0 && !/available models?:/i.test(`${stdout}\n${stderr}`)) {
+  if ((result.status ?? 1) !== 0 && !/available models?\b/i.test(`${stdout}\n${stderr}`)) {
     return [];
   }
 
   return parseCursorModelsOutput(stdout, stderr);
 }
 
-export async function listCursorModels(): Promise<AdapterModel[]> {
+async function loadCursorModels(options?: { forceRefresh?: boolean }): Promise<AdapterModel[]> {
+  const forceRefresh = options?.forceRefresh === true;
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
+  if (!forceRefresh && cached && cached.expiresAt > now) {
     return cached.models;
   }
 
-  const discovered = fetchCursorModelsFromCli();
+  const discovered = await fetchCursorModelsFromCli();
   if (discovered.length > 0) {
     const merged = mergedWithFallback(discovered);
     cached = {
@@ -161,10 +186,20 @@ export async function listCursorModels(): Promise<AdapterModel[]> {
   return dedupeModels(cursorFallbackModels);
 }
 
+export async function listCursorModels(): Promise<AdapterModel[]> {
+  return loadCursorModels();
+}
+
+export async function refreshCursorModels(): Promise<AdapterModel[]> {
+  return loadCursorModels({ forceRefresh: true });
+}
+
 export function resetCursorModelsCacheForTests() {
   cached = null;
 }
 
-export function setCursorModelsRunnerForTests(runner: (() => CursorModelsCommandResult) | null) {
+export function setCursorModelsRunnerForTests(
+  runner: (() => CursorModelsCommandResult | Promise<CursorModelsCommandResult>) | null,
+) {
   cursorModelsRunner = runner ?? defaultCursorModelsRunner;
 }

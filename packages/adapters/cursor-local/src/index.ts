@@ -16,6 +16,15 @@ export const DEFAULT_CURSOR_LOCAL_MODEL = "auto";
 
 const CURSOR_FALLBACK_MODEL_IDS = [
   "auto",
+  "gpt-5.5",
+  "gpt-5.5-high",
+  "gpt-5.5-fast",
+  "gpt-5.5-high-fast",
+  "gpt-5.4-high",
+  "composer-2.5",
+  "composer-2.5-fast",
+  "claude-opus-4-8-thinking-high",
+  "claude-fable-5-thinking-high",
   "composer-1.5",
   "composer-1",
   "gpt-5.3-codex-low",

@@ -63,6 +63,7 @@ import {
 import {
   execute as cursorCloudExecute,
   getConfigSchema as getCursorCloudConfigSchema,
+  listCursorCloudModels,
   sessionCodec as cursorCloudSessionCodec,
   testEnvironment as cursorCloudTestEnvironment,
 } from "@paperclipai/adapter-cursor-cloud/server";
@@ -112,7 +113,7 @@ import {
   models as openclawGatewayModels,
 } from "@paperclipai/adapter-openclaw-gateway";
 import { listCodexModels, refreshCodexModels } from "./codex-models.js";
-import { listCursorModels } from "./cursor-models.js";
+import { listCursorModels, refreshCursorModels } from "./cursor-models.js";
 import {
   execute as piExecute,
   listPiSkills,
@@ -320,6 +321,7 @@ const cursorLocalAdapter: ServerAdapterModule = {
   models: cursorModels,
   modelProfiles: cursorModelProfiles,
   listModels: listCursorModels,
+  refreshModels: refreshCursorModels,
   supportsLocalAgentJwt: true,
   supportsInstructionsBundle: true,
   instructionsPathKey: "instructionsFilePath",
@@ -335,6 +337,8 @@ const cursorCloudAdapter: ServerAdapterModule = {
   sessionCodec: cursorCloudSessionCodec,
   sessionManagement: getAdapterSessionManagement("cursor_cloud") ?? undefined,
   models: [],
+  listModels: listCursorCloudModels,
+  refreshModels: () => listCursorCloudModels({ forceRefresh: true }),
   supportsLocalAgentJwt: false,
   supportsInstructionsBundle: true,
   instructionsPathKey: "instructionsFilePath",
